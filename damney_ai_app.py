@@ -1,60 +1,65 @@
-
 import streamlit as st
-import openai
-import replicate
 from PIL import Image
-import requests
 from io import BytesIO
+import requests
+from openai import OpenAI
+import replicate
+import os
 
-# --- Configuration ---
-openai.api_key = "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"
-replicate_api = "r8_4yKBHcPg3Y5372miRThSb0orPHR1pUm1edu6s"
+# --- Set your API keys here or via Streamlit secrets ---
+OPENAI_API_KEY = st.secrets["openai_api_key"]
+REPLICATE_API_TOKEN = st.secrets["replicate_api_token"]
 
-# --- Page Config ---
+# --- OpenAI client setup ---
+client = OpenAI(api_key=OPENAI_API_KEY)
+
 st.set_page_config(page_title="Damney AI", layout="centered")
 st.title("🤖 Damney AI")
-st.subheader("Your personal mobile AI assistant")
-st.markdown("---")
+st.markdown("Your personal mobile AI assistant ✨")
 
-# --- Tabs for Functionality ---
-tab1, tab2 = st.tabs(["💬 Chat", "🖼️ Enhance Image"])
+# --- Tabs ---
+tab1, tab2 = st.tabs(["🧠 Chat", "🖼️ Enhance Image"])
 
-# --- Tab 1: Chat ---
+# --- Chat Tab ---
 with tab1:
-    st.write("Talk to Damney AI")
+    st.subheader("Ask Me Anything")
+    user_input = st.text_input("You:", placeholder="Type your message here...")
 
-    user_input = st.text_input("You:", placeholder="Ask anything...")
     if user_input:
         with st.spinner("Thinking..."):
-            response = openai.ChatCompletion.create(
+            response = client.chat.completions.create(
                 model="gpt-4",
                 messages=[
-                    {"role": "system", "content": "You are Damney AI, a helpful and smart assistant."},
-                    {"role": "user", "content": user_input},
+                    {"role": "system", "content": "You are Damney AI, a helpful, stylish assistant."},
+                    {"role": "user", "content": user_input}
                 ]
             )
-            st.markdown("**Damney AI:** " + response["choices"][0]["message"]["content"])
+            reply = response.choices[0].message.content
+            st.markdown(f"**Damney AI:** {reply}")
 
-# --- Tab 2: Enhance Image ---
+# --- Enhance Image Tab ---
 with tab2:
-    uploaded_image = st.file_uploader("Upload an image to enhance", type=["jpg", "jpeg", "png"])
+    st.subheader("Upload an image to enhance")
+    uploaded_file = st.file_uploader("Choose an image", type=["jpg", "jpeg", "png"])
 
-    if uploaded_image:
-        img = Image.open(uploaded_image)
-        st.image(img, caption="Original Image", use_column_width=True)
+    if uploaded_file:
+        image = Image.open(uploaded_file)
+        st.image(image, caption="Original Image", use_column_width=True)
 
-        if st.button("✨ Enhance"):
+        enhance_button = st.button("Enhance Image with AI")
+
+        if enhance_button:
             with st.spinner("Enhancing..."):
-                replicate_client = replicate.Client(api_token=replicate_api)
-                output = replicate_client.run(
-                    "cjwbw/real-esrgan:1f8c088c3ef07917311a57a3d4d7b3f420e6843706d6e1b1116d67fa7dcd9303",
-                    input={"image": uploaded_image}
+                response = replicate.run(
+                    "tencentarc/gfpgan",
+                    input={"img": uploaded_file, "scale": 2, "version": "1.3"},
+                    api_token=REPLICATE_API_TOKEN
                 )
-                enhanced_url = output["output"]
-                response = requests.get(enhanced_url)
-                enhanced_img = Image.open(BytesIO(response.content))
-                st.image(enhanced_img, caption="Enhanced Image", use_column_width=True)
-                st.markdown(f"[Download Enhanced Image]({enhanced_url})")
 
-st.markdown("---")
-st.caption("Powered by GPT-4 and Replicate • Built by you, assisted by ChatGPT")
+                # Load the output image
+                enhanced_url = response
+                if isinstance(response, list):
+                    enhanced_url = response[0]
+
+                enhanced_image = Image.open(requests.get(enhanced_url, stream=True).raw)
+                st.image(enhanced_image, caption="Enhanced Image", use_column_width=True)
